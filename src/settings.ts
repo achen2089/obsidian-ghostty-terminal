@@ -2,6 +2,8 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import type GhosttyTerminalPlugin from '../main';
 
 export interface GhosttyTerminalSettings {
+    /** Location to open the terminal by default */
+    defaultLocation: 'right' | 'left' | 'tab' | 'split' | 'window';
     /** Override path to Ghostty config file. Empty = auto-detect. */
     ghosttyConfigPath: string;
     /** Default shell. Empty = use $SHELL env. */
@@ -17,6 +19,7 @@ export interface GhosttyTerminalSettings {
 }
 
 export const DEFAULT_SETTINGS: GhosttyTerminalSettings = {
+    defaultLocation: 'right',
     ghosttyConfigPath: '',
     defaultShell: '',
     fontFamilyOverride: '',
@@ -37,6 +40,26 @@ export class GhosttySettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
         containerEl.createEl('h2', { text: 'Ghostty Terminal Settings' });
+
+        // --- Display ---
+        containerEl.createEl('h3', { text: 'Display' });
+
+        new Setting(containerEl)
+            .setName('Default location')
+            .setDesc('Where should the terminal launch by default?')
+            .addDropdown(dropdown =>
+                dropdown
+                    .addOption('right', 'Right Sidebar')
+                    .addOption('left', 'Left Sidebar')
+                    .addOption('tab', 'New Tab')
+                    .addOption('split', 'New Split')
+                    .addOption('window', 'Popout Window')
+                    .setValue(this.plugin.settings.defaultLocation)
+                    .onChange(async (value: 'right' | 'left' | 'tab' | 'split' | 'window') => {
+                        this.plugin.settings.defaultLocation = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
 
         // --- Ghostty Config ---
         containerEl.createEl('h3', { text: 'Ghostty Config' });

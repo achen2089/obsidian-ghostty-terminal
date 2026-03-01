@@ -1,4 +1,5 @@
 {
+  "defaultLocation": "right",
   "ghosttyConfigPath": "",
   "defaultShell": "",
   "fontFamilyOverride": "JetBrains Mono, Menlo, Consolas, monospace",

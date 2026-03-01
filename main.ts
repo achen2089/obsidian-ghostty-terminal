@@ -9,7 +9,7 @@ import {
     TFolder,
     WorkspaceLeaf,
 } from 'obsidian';
-import { init as initGhosttyWasm, Terminal } from 'ghostty-web';
+import { init as initGhosttyWasm, Terminal, FitAddon } from 'ghostty-web';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -59,7 +59,7 @@ export default class GhosttyTerminalPlugin extends Plugin {
         this.addCommand({
             id: 'open-ghostty-terminal-split',
             name: 'Open Ghostty Terminal in new split',
-            callback: () => this.activateView(true),
+            callback: () => this.activateView(true, 'split'),
         });
 
         // 7. Context menu on file explorer
@@ -94,8 +94,24 @@ export default class GhosttyTerminalPlugin extends Plugin {
         await this.saveData(this.settings);
     }
 
-    /** Open (or focus) a terminal in a right pane. */
-    async activateView(forceNew = false) {
+    private getNewLeaf(location: string): WorkspaceLeaf {
+        switch (location) {
+            case 'left':
+                return this.app.workspace.getLeftLeaf(false)!;
+            case 'tab':
+                return this.app.workspace.getLeaf('tab');
+            case 'split':
+                return this.app.workspace.getLeaf('split');
+            case 'window':
+                return this.app.workspace.getLeaf('window');
+            case 'right':
+            default:
+                return this.app.workspace.getRightLeaf(false)!;
+        }
+    }
+
+    /** Open (or focus) a terminal. */
+    async activateView(forceNew = false, locationOverride?: string) {
         const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_GHOSTTY);
 
         if (!forceNew && existing.length > 0) {
@@ -103,14 +119,15 @@ export default class GhosttyTerminalPlugin extends Plugin {
             return;
         }
 
-        const leaf = this.app.workspace.getRightLeaf(false)!;
+        const location = locationOverride || this.settings.defaultLocation;
+        const leaf = this.getNewLeaf(location);
         await leaf.setViewState({ type: VIEW_TYPE_GHOSTTY, active: true });
         this.app.workspace.revealLeaf(leaf);
     }
 
     /** Open a terminal seeded with a specific vault-relative cwd. */
     async activateViewAt(vaultRelativePath: string) {
-        const leaf = this.app.workspace.getRightLeaf(false)!;
+        const leaf = this.getNewLeaf(this.settings.defaultLocation);
         await leaf.setViewState({
             type: VIEW_TYPE_GHOSTTY,
             active: true,
@@ -126,6 +143,7 @@ const CHAR_MEASURE_ID = 'ghostty-char-measure';
 
 class GhosttyTerminalView extends ItemView {
     private terminal: Terminal | null = null;
+    private fitAddon: FitAddon | null = null;
     private ptyProcess: child_process.ChildProcess | null = null;
     private resizePipe: NodeJS.WritableStream | null = null;
     private resizeObserver: ResizeObserver | null = null;
@@ -219,7 +237,13 @@ class GhosttyTerminalView extends ItemView {
             cursorBlink: gc.cursorBlink ?? false,
         });
 
+        this.fitAddon = new FitAddon();
+        this.terminal.loadAddon(this.fitAddon);
+
         this.terminal.open(this.termEl!);
+
+        // Try to rely on the FitAddon rather than calculating char dimensions manually
+        this.fitAddon.fit();
 
         // Re-measure now that font is applied (canvas measurement is more accurate)
         this.measureCharDimensions();
@@ -297,7 +321,12 @@ class GhosttyTerminalView extends ItemView {
             // No encoding set — receive raw Buffers so UTF-8 multi-byte
             // sequences are preserved and decoded correctly by the VT parser.
             this.ptyProcess.stdout?.on('data', (data: Buffer) => {
-                this.terminal?.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+                this.terminal?.write(
+                    new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+                    () => {
+                        this.terminal?.scrollToBottom();
+                    }
+                );
             });
 
             // Terminal input → PTY stdin
@@ -378,9 +407,15 @@ class GhosttyTerminalView extends ItemView {
     }
 
     private handleResize() {
-        if (!this.terminal) return;
-        const { cols, rows } = this.terminalDimensions();
-        this.terminal.resize(cols, rows);
+        if (!this.terminal || !this.fitAddon) return;
+
+        // Let the addon do the layout fitting
+        this.fitAddon.fit();
+
+        // PTY dimensions are kept in sync natively by terminal resize, but we need
+        // to re-calculate columns/rows to pass to the PTY explicitly via our pipe
+        const { cols, rows } = this.terminal;
+
         if (this.ptyAlive && this.resizePipe) {
             // Send 4-byte big-endian resize frame (rows uint16, cols uint16)
             // Python's pty_helper.py reads this on fd 3 and calls TIOCSWINSZ
@@ -399,7 +434,9 @@ class GhosttyTerminalView extends ItemView {
             try { this.ptyProcess?.kill(); } catch (_) { /* ignore */ }
         }
         this.terminal?.dispose?.();
+        this.fitAddon?.dispose?.();
         this.ptyProcess = null;
         this.terminal = null;
+        this.fitAddon = null;
     }
 }
