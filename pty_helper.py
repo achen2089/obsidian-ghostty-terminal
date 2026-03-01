@@ -46,6 +46,10 @@ def _main_unix() -> None:
     shell = sys.argv[1]
     args = sys.argv[1:]  # execvp expects argv[0] = program name
 
+    # Standard convention for login shells: prepend '-' to argv[0]
+    # This ensures ~/.zprofile, ~/.bash_profile, etc. are sourced.
+    args[0] = "-" + os.path.basename(shell)
+
     # Fork a PTY
     child_pid, pty_fd = pty.fork()
 
