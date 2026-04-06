@@ -242,12 +242,54 @@ class GhosttyTerminalView extends ItemView {
             scrollback,
             cursorStyle: gc.cursorStyle ?? 'block',
             cursorBlink: gc.cursorBlink ?? false,
+            allowTransparency: (gc.backgroundOpacity !== undefined && gc.backgroundOpacity < 1) ||
+                               (s.backgroundOpacityOverride > 0 && s.backgroundOpacityOverride < 1),
         });
 
         this.fitAddon = new FitAddon();
         this.terminal.loadAddon(this.fitAddon);
 
         this.terminal.open(this.termEl!);
+
+        // ── Apply background opacity ──────────────────────────────
+        const bgOpacity = s.backgroundOpacityOverride > 0
+            ? s.backgroundOpacityOverride
+            : gc.backgroundOpacity;
+
+        if (bgOpacity !== undefined && bgOpacity < 1) {
+            // Make the terminal background semi-transparent
+            const termContainer = this.termEl?.querySelector('.xterm-screen') as HTMLElement | null;
+            if (termContainer) {
+                termContainer.style.opacity = String(bgOpacity);
+            }
+            // Also set the viewport background
+            const viewport = this.termEl?.querySelector('.xterm-viewport') as HTMLElement | null;
+            if (viewport) {
+                viewport.style.background = 'transparent';
+            }
+        }
+
+        // ── Apply window padding ──────────────────────────────────
+        const padX = s.windowPaddingXOverride >= 0
+            ? s.windowPaddingXOverride
+            : (gc.windowPaddingX ?? 0);
+        const padY = s.windowPaddingYOverride >= 0
+            ? s.windowPaddingYOverride
+            : (gc.windowPaddingY ?? 0);
+
+        if ((padX > 0 || padY > 0) && this.termEl) {
+            this.termEl.style.padding = `${padY}px ${padX}px`;
+        }
+
+        // ── Apply font thickening via CSS ─────────────────────────
+        if (gc.fontThicken && this.termEl) {
+            this.termEl.style.setProperty('-webkit-font-smoothing', 'antialiased');
+            // fontThickenStrength maps to CSS text-stroke
+            if (gc.fontThickenStrength && gc.fontThickenStrength > 0) {
+                const strokeWidth = Math.max(0.1, gc.fontThickenStrength / 255);
+                this.termEl.style.setProperty('-webkit-text-stroke-width', `${strokeWidth}px`);
+            }
+        }
 
         // Build the full keybind list: Ghostty defaults + user config.
         // User config entries override defaults for the same key combo.

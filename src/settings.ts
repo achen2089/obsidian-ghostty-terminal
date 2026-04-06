@@ -16,6 +16,12 @@ export interface GhosttyTerminalSettings {
     ligatures: boolean;
     /** Number of scrollback lines */
     scrollbackLines: number;
+    /** Override background opacity (0 = use Ghostty config, 0.01-1.0). */
+    backgroundOpacityOverride: number;
+    /** Override window padding X in pixels (-1 = use Ghostty config). */
+    windowPaddingXOverride: number;
+    /** Override window padding Y in pixels (-1 = use Ghostty config). */
+    windowPaddingYOverride: number;
 }
 
 export const DEFAULT_SETTINGS: GhosttyTerminalSettings = {
@@ -26,6 +32,9 @@ export const DEFAULT_SETTINGS: GhosttyTerminalSettings = {
     fontSizeOverride: 0,
     ligatures: true,
     scrollbackLines: 10000,
+    backgroundOpacityOverride: 0,
+    windowPaddingXOverride: -1,
+    windowPaddingYOverride: -1,
 };
 
 export class GhosttySettingTab extends PluginSettingTab {
@@ -131,6 +140,53 @@ export class GhosttySettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.ligatures)
                     .onChange(async value => {
                         this.plugin.settings.ligatures = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        // --- Appearance ---
+        new Setting(containerEl).setName('Appearance').setHeading();
+        containerEl.createEl('small', {
+            text: 'Override visual settings from your Ghostty config.',
+            cls: 'setting-item-description',
+        });
+
+        new Setting(containerEl)
+            .setName('Background opacity')
+            .setDesc('Override background opacity (0 = use Ghostty config value, 0.01–1.0).')
+            .addText(text =>
+                text
+                    .setPlaceholder('0')
+                    .setValue(this.plugin.settings.backgroundOpacityOverride > 0 ? String(this.plugin.settings.backgroundOpacityOverride) : '')
+                    .onChange(async value => {
+                        const parsed = parseFloat(value) || 0;
+                        this.plugin.settings.backgroundOpacityOverride = Math.max(0, Math.min(1, parsed));
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName('Window padding X')
+            .setDesc('Horizontal padding in pixels (-1 = use Ghostty config).')
+            .addText(text =>
+                text
+                    .setPlaceholder('-1')
+                    .setValue(this.plugin.settings.windowPaddingXOverride >= 0 ? String(this.plugin.settings.windowPaddingXOverride) : '')
+                    .onChange(async value => {
+                        this.plugin.settings.windowPaddingXOverride = value.trim() === '' ? -1 : (parseInt(value, 10) ?? -1);
+                        await this.plugin.saveSettings();
+                    })
+            );
+
+        new Setting(containerEl)
+            .setName('Window padding Y')
+            .setDesc('Vertical padding in pixels (-1 = use Ghostty config).')
+            .addText(text =>
+                text
+                    .setPlaceholder('-1')
+                    .setValue(this.plugin.settings.windowPaddingYOverride >= 0 ? String(this.plugin.settings.windowPaddingYOverride) : '')
+                    .onChange(async value => {
+                        this.plugin.settings.windowPaddingYOverride = value.trim() === '' ? -1 : (parseInt(value, 10) ?? -1);
                         await this.plugin.saveSettings();
                     })
             );
