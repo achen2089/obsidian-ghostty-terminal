@@ -1,5 +1,6 @@
 /* ──────────────────────────────────────────────────────────────
    Ghostty Terminal – Obsidian Plugin Styles
+   Matches simple-terminal's clean look
    ────────────────────────────────────────────────────────────── */
 
 /* Root container fills the pane */
@@ -10,8 +11,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: #1e1e2e;
-    /* fallback; overridden by Ghostty theme */
+    background-color: #202020;
     padding: 0 !important;
     margin: 0 !important;
 }
@@ -24,27 +24,95 @@
     height: 100%;
     overflow: hidden;
     position: relative;
-    padding: 0 10px;
-    /* Give text some breathing room on edges */
 }
 
-/* The xterm.js/ghostty-web canvas host – flex-grow to consume all space */
+/* The xterm.js/ghostty-web canvas host */
 .ghostty-term {
     flex: 1 1 100%;
     width: 100%;
     height: 100%;
     overflow: hidden;
+    padding: 8px !important;
+    box-sizing: border-box;
+}
+
+/* Padding on .xterm element too */
+.ghostty-term .xterm {
+    width: 100% !important;
+    height: 100% !important;
+    padding: 8px !important;
+    box-sizing: border-box;
 }
 
 /* Make xterm internal elements fill their container */
-.ghostty-term .xterm,
-.ghostty-term .xterm-viewport,
+.ghostty-term .xterm-viewport {
+    width: 100% !important;
+    height: 100% !important;
+    overflow-y: auto;
+    background-color: #202020;
+}
+
 .ghostty-term .xterm-screen {
     width: 100% !important;
     height: 100% !important;
+    background-color: #202020;
 }
 
-/* Status/restart bar at top (hidden by default) */
+/* ── Hide any stray cursors/carets in the terminal ────────────── */
+.ghostty-term .xterm-helper-textarea {
+    caret-color: transparent !important;
+    opacity: 0 !important;
+    color: transparent !important;
+}
+
+.ghostty-term .xterm-helpers {
+    overflow: hidden !important;
+}
+
+.ghostty-term textarea {
+    caret-color: transparent !important;
+    opacity: 0 !important;
+}
+
+.ghostty-term .xterm .xterm-accessibility {
+    display: none !important;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────── */
+.ghostty-term .xterm-viewport::-webkit-scrollbar {
+    width: 10px;
+}
+
+.ghostty-term .xterm-viewport::-webkit-scrollbar-track {
+    background: #202020;
+}
+
+.ghostty-term .xterm-viewport::-webkit-scrollbar-thumb {
+    background: #3d4b5c;
+    border-radius: 5px;
+}
+
+.ghostty-term .xterm-viewport::-webkit-scrollbar-thumb:hover {
+    background: #4d5b6c;
+}
+
+/* ── Selection ────────────────────────────────────────────────── */
+.ghostty-term .xterm-selection div {
+    background-color: #3d4b5c !important;
+}
+
+/* ── Links ────────────────────────────────────────────────────── */
+.ghostty-term .xterm-link {
+    color: #7c9dff;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.ghostty-term .xterm-link:hover {
+    color: #99b3ff;
+}
+
+/* ── Status/restart bar ───────────────────────────────────────── */
 .ghostty-status-bar {
     flex: 0 0 auto;
     padding: 2px 8px;

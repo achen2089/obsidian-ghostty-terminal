@@ -220,7 +220,7 @@ class GhosttyTerminalView extends ItemView {
         const scrollback = gc.scrollback ?? s.scrollbackLines;
 
         const theme: Record<string, string> = {
-            background: gc.colors.background ?? '#1e1e2e',
+            background: '#202020',
             foreground: gc.colors.foreground ?? '#cdd6f4',
             cursor: gc.colors.cursor ?? '#f5e0dc',
             black: gc.colors.black ?? '#45475a',
@@ -244,6 +244,8 @@ class GhosttyTerminalView extends ItemView {
         this.terminal = new Terminal({
             fontSize,
             fontFamily,
+            lineHeight: 1.9,
+            letterSpacing: 2,
             theme,
             scrollback,
             cursorStyle: gc.cursorStyle ?? 'block',
@@ -257,34 +259,42 @@ class GhosttyTerminalView extends ItemView {
 
         this.terminal.open(this.termEl!);
 
+        // Hide cursor layer until shell sends first output (prevents cursor artifact at 0,0)
+        this.terminal.write('\x1b[?25l');
+        this.termEl!.classList.add('ghostty-cursor-hidden');
+
+        // ── Apply background and padding (matching simple-terminal) ─
+        const container = this.containerEl.children[1] as HTMLElement;
+        container.style.backgroundColor = '#202020';
+        container.style.padding = '0';
+
+        const viewport = this.termEl?.querySelector('.xterm-viewport') as HTMLElement | null;
+        if (viewport) viewport.style.backgroundColor = '#202020';
+        const screenEl = this.termEl?.querySelector('.xterm-screen') as HTMLElement | null;
+        if (screenEl) screenEl.style.backgroundColor = '#202020';
+
+        // Apply padding to terminal elements
+        const xtermElement = this.termEl?.querySelector('.xterm') as HTMLElement | null;
+        if (xtermElement) {
+            xtermElement.style.padding = '8px';
+        }
+        // Also apply directly to termEl as fallback
+        if (this.termEl) {
+            this.termEl.style.padding = '8px';
+        }
+
         // ── Apply background opacity ──────────────────────────────
         const bgOpacity = s.backgroundOpacityOverride > 0
             ? s.backgroundOpacityOverride
             : gc.backgroundOpacity;
 
         if (bgOpacity !== undefined && bgOpacity < 1) {
-            // Make the terminal background semi-transparent
-            const termContainer = this.termEl?.querySelector('.xterm-screen') as HTMLElement | null;
-            if (termContainer) {
-                termContainer.style.opacity = String(bgOpacity);
+            if (screenEl) {
+                screenEl.style.opacity = String(bgOpacity);
             }
-            // Also set the viewport background
-            const viewport = this.termEl?.querySelector('.xterm-viewport') as HTMLElement | null;
             if (viewport) {
                 viewport.style.background = 'transparent';
             }
-        }
-
-        // ── Apply window padding ──────────────────────────────────
-        const padX = s.windowPaddingXOverride >= 0
-            ? s.windowPaddingXOverride
-            : (gc.windowPaddingX ?? 0);
-        const padY = s.windowPaddingYOverride >= 0
-            ? s.windowPaddingYOverride
-            : (gc.windowPaddingY ?? 0);
-
-        if ((padX > 0 || padY > 0) && this.termEl) {
-            this.termEl.style.padding = `${padY}px ${padX}px`;
         }
 
         // ── Apply font thickening via CSS ─────────────────────────
@@ -430,7 +440,14 @@ class GhosttyTerminalView extends ItemView {
             // PTY output → terminal display
             // No encoding set — receive raw Buffers so UTF-8 multi-byte
             // sequences are preserved and decoded correctly by the VT parser.
+            let firstOutput = true;
             this.ptyProcess.stdout?.on('data', (data: Buffer) => {
+                if (firstOutput) {
+                    firstOutput = false;
+                    // Show cursor now that shell prompt is arriving
+                    this.terminal?.write('\x1b[?25h');
+                    this.termEl?.classList.remove('ghostty-cursor-hidden');
+                }
                 this.terminal?.write(
                     new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
                     () => {
