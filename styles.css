@@ -36,11 +36,11 @@
     box-sizing: border-box;
 }
 
-/* Padding on .xterm element too */
+/* xterm element fills the term container */
 .ghostty-term .xterm {
     width: 100% !important;
     height: 100% !important;
-    padding: 8px !important;
+    padding: 0 !important;
     box-sizing: border-box;
 }
 

@@ -244,8 +244,6 @@ class GhosttyTerminalView extends ItemView {
         this.terminal = new Terminal({
             fontSize,
             fontFamily,
-            lineHeight: 1.9,
-            letterSpacing: 2,
             theme,
             scrollback,
             cursorStyle: gc.cursorStyle ?? 'block',
@@ -273,15 +271,7 @@ class GhosttyTerminalView extends ItemView {
         const screenEl = this.termEl?.querySelector('.xterm-screen') as HTMLElement | null;
         if (screenEl) screenEl.style.backgroundColor = '#202020';
 
-        // Apply padding to terminal elements
-        const xtermElement = this.termEl?.querySelector('.xterm') as HTMLElement | null;
-        if (xtermElement) {
-            xtermElement.style.padding = '8px';
-        }
-        // Also apply directly to termEl as fallback
-        if (this.termEl) {
-            this.termEl.style.padding = '8px';
-        }
+        // Padding is handled by .ghostty-term CSS rule (8px)
 
         // ── Apply background opacity ──────────────────────────────
         const bgOpacity = s.backgroundOpacityOverride > 0
@@ -349,6 +339,14 @@ class GhosttyTerminalView extends ItemView {
                 e.stopPropagation();
             }
         }, { capture: true });
+
+        // Patch cell height to prevent descender clipping (ghostty-web only adds 2px).
+        // TypeScript `private` is not enforced at runtime, so we can access `metrics` directly.
+        const renderer = this.terminal.renderer as any;
+        if (renderer?.metrics) {
+            renderer.metrics.height = Math.ceil(renderer.metrics.height * 1.15);
+            renderer.resize?.(this.terminal.cols, this.terminal.rows);
+        }
 
         // Try to rely on the FitAddon rather than calculating char dimensions manually
         this.fitAddon.fit();
