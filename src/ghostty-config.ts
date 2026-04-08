@@ -154,6 +154,8 @@ function getThemeDirs(): string[] {
 
     // Ghostty built-in themes (common install locations)
     const builtinPaths = [
+        // macOS app bundle
+        '/Applications/Ghostty.app/Contents/Resources/ghostty/themes',
         '/usr/share/ghostty/themes',
         '/usr/local/share/ghostty/themes',
         '/opt/homebrew/share/ghostty/themes',

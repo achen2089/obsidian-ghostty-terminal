@@ -25,10 +25,10 @@ export interface GhosttyTerminalSettings {
 }
 
 export const DEFAULT_SETTINGS: GhosttyTerminalSettings = {
-    defaultLocation: 'right',
+    defaultLocation: 'tab',
     ghosttyConfigPath: '',
     defaultShell: '',
-    fontFamilyOverride: 'JetBrains Mono, Menlo, Consolas, monospace',
+    fontFamilyOverride: '',
     fontSizeOverride: 0,
     ligatures: true,
     scrollbackLines: 10000,
