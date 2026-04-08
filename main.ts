@@ -344,7 +344,7 @@ class GhosttyTerminalView extends ItemView {
         // TypeScript `private` is not enforced at runtime, so we can access `metrics` directly.
         const renderer = this.terminal.renderer as any;
         if (renderer?.metrics) {
-            renderer.metrics.height = Math.ceil(renderer.metrics.height * 1.3);
+            renderer.metrics.height = Math.ceil(renderer.metrics.height * 1.15);
             renderer.resize?.(this.terminal.cols, this.terminal.rows);
         }
 
