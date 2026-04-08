@@ -58,6 +58,12 @@ export default class GhosttyTerminalPlugin extends Plugin {
         });
 
         this.addCommand({
+            id: 'open-tab',
+            name: 'Open terminal in new tab',
+            callback: () => this.activateView(true, 'tab'),
+        });
+
+        this.addCommand({
             id: 'open-split',
             name: 'Open terminal in new split',
             callback: () => this.activateView(true, 'split'),
