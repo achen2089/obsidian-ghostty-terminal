@@ -21,6 +21,70 @@ import ptyHelperCode from './pty_helper.py';
 
 const VIEW_TYPE_GHOSTTY = 'ghostty-terminal';
 
+// ─── Theme palettes ─────────────────────────────────────────────────────────
+
+function isObsidianDarkMode(): boolean {
+    return document.body.classList.contains('theme-dark');
+}
+
+/**
+ * Convert "#rrggbb" to "rrrr/gggg/bbbb" for xterm OSC color responses.
+ * 16-bit-per-channel format is the canonical xterm form; we just double
+ * each 8-bit byte to get 16-bit values.
+ */
+function hexToRgbPair(hex: string): string | null {
+    const m = /^#([0-9a-f]{6})$/i.exec(hex);
+    if (!m) return null;
+    const rr = m[1].slice(0, 2);
+    const gg = m[1].slice(2, 4);
+    const bb = m[1].slice(4, 6);
+    return `${rr}${rr}/${gg}${gg}/${bb}${bb}`;
+}
+
+const DARK_PALETTE: Record<string, string> = {
+    background:    '#202020',
+    foreground:    '#cdd6f4',
+    cursor:        '#f5e0dc',
+    black:         '#45475a',
+    red:           '#f38ba8',
+    green:         '#a6e3a1',
+    yellow:        '#f9e2af',
+    blue:          '#89b4fa',
+    magenta:       '#f5c2e7',
+    cyan:          '#94e2d5',
+    white:         '#bac2de',
+    brightBlack:   '#585b70',
+    brightRed:     '#f38ba8',
+    brightGreen:   '#a6e3a1',
+    brightYellow:  '#f9e2af',
+    brightBlue:    '#89b4fa',
+    brightMagenta: '#f5c2e7',
+    brightCyan:    '#94e2d5',
+    brightWhite:   '#a6adc8',
+};
+
+const LIGHT_PALETTE: Record<string, string> = {
+    background:    '#eff1f5',
+    foreground:    '#4c4f69',
+    cursor:        '#dc8a78',
+    black:         '#5c5f77',
+    red:           '#d20f39',
+    green:         '#40a02b',
+    yellow:        '#df8e1d',
+    blue:          '#1e66f5',
+    magenta:       '#ea76cb',
+    cyan:          '#179299',
+    white:         '#acb0be',
+    brightBlack:   '#6c6f85',
+    brightRed:     '#d20f39',
+    brightGreen:   '#40a02b',
+    brightYellow:  '#df8e1d',
+    brightBlue:    '#1e66f5',
+    brightMagenta: '#ea76cb',
+    brightCyan:    '#179299',
+    brightWhite:   '#bcc0cc',
+};
+
 // ─── Plugin ──────────────────────────────────────────────────────────────────
 
 export default class GhosttyTerminalPlugin extends Plugin {
@@ -205,11 +269,113 @@ class GhosttyTerminalView extends ItemView {
         this.initTerminal();
         this.spawnPty();
 
+        this.registerEvent(
+            this.app.workspace.on('css-change', () => this.applyObsidianTheme())
+        );
+
+        // Defend against onOpen running twice (pane restore / reparent) —
+        // disconnect any prior observer before attaching a fresh one.
+        this.resizeObserver?.disconnect();
         this.resizeObserver = new ResizeObserver(() => this.handleResize());
         this.resizeObserver.observe(this.termEl);
     }
 
     // ── Terminal init ──────────────────────────────────────────────────────────
+
+    private buildTheme(): Record<string, string> {
+        const gc = this.plugin.ghosttyConfig;
+        const isDark = isObsidianDarkMode();
+
+        // In dark mode, layer ghostty's configured colors on top of the dark
+        // palette (user's chosen ghostty theme wins).
+        // In light mode, ghostty themes are almost always dark-oriented, so
+        // ignore gc.colors entirely and use the light palette as-is.
+        if (!isDark) return { ...LIGHT_PALETTE };
+
+        return {
+            background:    gc.colors.background ?? DARK_PALETTE.background,
+            foreground:    gc.colors.foreground ?? DARK_PALETTE.foreground,
+            cursor:        gc.colors.cursor ?? DARK_PALETTE.cursor,
+            black:         gc.colors.black ?? DARK_PALETTE.black,
+            red:           gc.colors.red ?? DARK_PALETTE.red,
+            green:         gc.colors.green ?? DARK_PALETTE.green,
+            yellow:        gc.colors.yellow ?? DARK_PALETTE.yellow,
+            blue:          gc.colors.blue ?? DARK_PALETTE.blue,
+            magenta:       gc.colors.magenta ?? DARK_PALETTE.magenta,
+            cyan:          gc.colors.cyan ?? DARK_PALETTE.cyan,
+            white:         gc.colors.white ?? DARK_PALETTE.white,
+            brightBlack:   gc.colors.brightBlack ?? DARK_PALETTE.brightBlack,
+            brightRed:     gc.colors.brightRed ?? DARK_PALETTE.brightRed,
+            brightGreen:   gc.colors.brightGreen ?? DARK_PALETTE.brightGreen,
+            brightYellow:  gc.colors.brightYellow ?? DARK_PALETTE.brightYellow,
+            brightBlue:    gc.colors.brightBlue ?? DARK_PALETTE.brightBlue,
+            brightMagenta: gc.colors.brightMagenta ?? DARK_PALETTE.brightMagenta,
+            brightCyan:    gc.colors.brightCyan ?? DARK_PALETTE.brightCyan,
+            brightWhite:   gc.colors.brightWhite ?? DARK_PALETTE.brightWhite,
+        };
+    }
+
+    /** Re-apply the Obsidian-derived palette. Safe to call after init. */
+    private applyObsidianTheme() {
+        if (!this.terminal) return;
+        const theme = this.buildTheme();
+
+        // ghostty-web's `options.theme = ...` setter is a no-op at runtime
+        // (it only logs a warning). Reach into the renderer directly and
+        // force a full redraw.
+        const t = this.terminal as unknown as {
+            renderer?: { setTheme?: (th: Record<string, string>) => void; render?: Function };
+            wasmTerm?: unknown;
+            viewportY?: number;
+        };
+        t.renderer?.setTheme?.(theme);
+        if (t.renderer?.render && t.wasmTerm) {
+            t.renderer.render(t.wasmTerm, true, t.viewportY ?? 0, t);
+        }
+
+        const s = this.plugin.settings;
+        const gc = this.plugin.ghosttyConfig;
+        const bgOpacity = s.backgroundOpacityOverride > 0
+            ? s.backgroundOpacityOverride
+            : gc.backgroundOpacity;
+        const hasTransparency = bgOpacity !== undefined && bgOpacity < 1;
+
+        const container = this.containerEl.children[1] as HTMLElement;
+        container.style.backgroundColor = theme.background;
+        const viewport = this.termEl?.querySelector('.xterm-viewport') as HTMLElement | null;
+        if (viewport) {
+            if (hasTransparency) viewport.style.background = 'transparent';
+            else viewport.style.backgroundColor = theme.background;
+        }
+        const screenEl = this.termEl?.querySelector('.xterm-screen') as HTMLElement | null;
+        if (screenEl) screenEl.style.backgroundColor = theme.background;
+    }
+
+    /**
+     * Respond to terminal color queries (OSC 10/11/12) that apps like
+     * Claude Code's Auto theme use to detect light vs dark terminals.
+     * ghostty-vt logs a warning and doesn't answer, so we do it ourselves.
+     * Format: ESC ] n ; ? (ST | BEL)  →  respond ESC ] n ; rgb:RR/GG/BB ST
+     */
+    private handleColorQueries(data: Buffer) {
+        if (!this.ptyAlive || !this.ptyProcess?.stdin) return;
+        // Fast check: avoid string conversion unless an ESC ] byte is present.
+        if (!data.includes(0x1b)) return;
+        const theme = this.buildTheme();
+        const queryRe = /\x1b\]1([012]);\?(?:\x1b\\|\x07)/g;
+        const str = data.toString('binary');
+        let m: RegExpExecArray | null;
+        while ((m = queryRe.exec(str)) !== null) {
+            const n = '1' + m[1];  // '10', '11', or '12'
+            const hex = n === '11' ? theme.background
+                      : n === '10' ? theme.foreground
+                      : theme.cursor;
+            const rgb = hexToRgbPair(hex);
+            if (!rgb) continue;
+            const resp = `\x1b]${n};rgb:${rgb}\x1b\\`;
+            this.ptyProcess.stdin.write(resp, 'utf8');
+        }
+    }
 
     private initTerminal() {
         const gc = this.plugin.ghosttyConfig;
@@ -219,27 +385,7 @@ class GhosttyTerminalView extends ItemView {
         const fontSize = s.fontSizeOverride > 0 ? s.fontSizeOverride : (gc.fontSize ?? 13);
         const scrollback = gc.scrollback ?? s.scrollbackLines;
 
-        const theme: Record<string, string> = {
-            background: '#202020',
-            foreground: gc.colors.foreground ?? '#cdd6f4',
-            cursor: gc.colors.cursor ?? '#f5e0dc',
-            black: gc.colors.black ?? '#45475a',
-            red: gc.colors.red ?? '#f38ba8',
-            green: gc.colors.green ?? '#a6e3a1',
-            yellow: gc.colors.yellow ?? '#f9e2af',
-            blue: gc.colors.blue ?? '#89b4fa',
-            magenta: gc.colors.magenta ?? '#f5c2e7',
-            cyan: gc.colors.cyan ?? '#94e2d5',
-            white: gc.colors.white ?? '#bac2de',
-            brightBlack: gc.colors.brightBlack ?? '#585b70',
-            brightRed: gc.colors.brightRed ?? '#f38ba8',
-            brightGreen: gc.colors.brightGreen ?? '#a6e3a1',
-            brightYellow: gc.colors.brightYellow ?? '#f9e2af',
-            brightBlue: gc.colors.brightBlue ?? '#89b4fa',
-            brightMagenta: gc.colors.brightMagenta ?? '#f5c2e7',
-            brightCyan: gc.colors.brightCyan ?? '#94e2d5',
-            brightWhite: gc.colors.brightWhite ?? '#a6adc8',
-        };
+        const theme = this.buildTheme();
 
         this.terminal = new Terminal({
             fontSize,
@@ -263,13 +409,13 @@ class GhosttyTerminalView extends ItemView {
 
         // ── Apply background and padding (matching simple-terminal) ─
         const container = this.containerEl.children[1] as HTMLElement;
-        container.style.backgroundColor = '#202020';
+        container.style.backgroundColor = theme.background;
         container.style.padding = '0';
 
         const viewport = this.termEl?.querySelector('.xterm-viewport') as HTMLElement | null;
-        if (viewport) viewport.style.backgroundColor = '#202020';
+        if (viewport) viewport.style.backgroundColor = theme.background;
         const screenEl = this.termEl?.querySelector('.xterm-screen') as HTMLElement | null;
-        if (screenEl) screenEl.style.backgroundColor = '#202020';
+        if (screenEl) screenEl.style.backgroundColor = theme.background;
 
         // Padding is handled by .ghostty-term CSS rule (8px)
 
@@ -301,42 +447,76 @@ class GhosttyTerminalView extends ItemView {
         // User config entries override defaults for the same key combo.
         const effectiveKeybinds = buildEffectiveKeybinds(this.plugin.ghosttyConfig.keybinds);
 
-        // Intercept keybinds in capture phase so Obsidian's global handlers
-        // never see the key events meant for the terminal.
-        this.termEl!.addEventListener('keydown', (e: KeyboardEvent) => {
+        // Terminal input → PTY stdin. Registered once here (not in spawnPty),
+        // because this.terminal is reused across PTY restarts — registering inside
+        // spawnPty would stack duplicate handlers and multiply every keystroke.
+        this.terminal.onData((data: string) => {
+            if (this.ptyAlive && this.ptyProcess?.stdin) {
+                this.ptyProcess.stdin.write(data, 'utf8');
+            }
+        });
+
+        // Intercept keys in capture phase so Obsidian's global handlers never
+        // see events meant for the terminal. Three policies:
+        //   1. Escape-hatch shortcuts (Cmd+Shift+P, Cmd+,, Cmd+Q) — pass through
+        //      so the user can always reach the command palette / settings / quit.
+        //   2. Bound keybinds — run the action and swallow the event.
+        //   3. Any other modified key (Cmd/Ctrl/Alt + X) — swallow so Obsidian
+        //      doesn't fire its shortcut; drop on the floor (no PTY input).
+        // Unmodified keys fall through to xterm as normal.
+        this.registerDomEvent(this.termEl!, 'keydown', (e: KeyboardEvent) => {
+            if (isObsidianEscapeShortcut(e)) return;
+
             const match = findKeybind(e, effectiveKeybinds);
-            if (!match) return;
+            if (match) {
+                const action = match.action;
 
-            const action = match.action;
+                if (action === 'copy_to_clipboard') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    const text = window.getSelection()?.toString() ?? '';
+                    if (text) navigator.clipboard.writeText(text).catch(() => {/* ignore */});
 
-            if (action === 'copy_to_clipboard') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                const text = window.getSelection()?.toString() ?? '';
-                if (text) navigator.clipboard.writeText(text).catch(() => {/* ignore */});
+                } else if (action === 'paste_from_clipboard') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    navigator.clipboard.readText().then(text => {
+                        if (this.ptyAlive && this.ptyProcess?.stdin && text) {
+                            this.ptyProcess.stdin.write(text, 'utf8');
+                        }
+                    }).catch(() => {/* ignore */});
 
-            } else if (action === 'paste_from_clipboard') {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                navigator.clipboard.readText().then(text => {
-                    if (this.ptyAlive && this.ptyProcess?.stdin && text) {
+                } else if (action.startsWith('text:')) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    const raw = action.slice(5);
+                    const text = unescapeGhosttyText(raw);
+                    if (this.ptyAlive && this.ptyProcess?.stdin) {
                         this.ptyProcess.stdin.write(text, 'utf8');
                     }
-                }).catch(() => {/* ignore */});
 
-            } else if (action.startsWith('text:')) {
+                } else {
+                    // Action we can't implement (new_tab, new_window, etc.) —
+                    // block Obsidian from stealing the key.
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                }
+                return;
+            }
+
+            // Greedy capture: unbound Cmd/Ctrl/Alt combos should not trigger
+            // Obsidian shortcuts (quick switcher, new tab, etc.) while the
+            // terminal is focused. Drop them without writing to the PTY.
+            if (e.metaKey || e.ctrlKey || e.altKey) {
+                // Don't block plain Ctrl+letter on macOS — xterm needs those
+                // (Ctrl+C, Ctrl+R, Ctrl+L) to reach the shell, and Obsidian
+                // doesn't use them on any platform where Cmd is primary.
+                const isMacCtrlOnly = process.platform === 'darwin'
+                    && e.ctrlKey && !e.metaKey && !e.altKey;
+                if (isMacCtrlOnly) return;
+
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                const raw = action.slice(5);
-                const text = unescapeGhosttyText(raw);
-                if (this.ptyAlive && this.ptyProcess?.stdin) {
-                    this.ptyProcess.stdin.write(text, 'utf8');
-                }
-
-            } else {
-                // Action we can't implement (new_tab, new_window, etc.) —
-                // block Obsidian from stealing the key but let ghostty-web handle it.
-                e.stopPropagation();
             }
         }, { capture: true });
 
@@ -423,6 +603,10 @@ class GhosttyTerminalView extends ItemView {
                         COLORTERM: 'truecolor',
                         COLUMNS: String(cols),
                         LINES: String(rows),
+                        // Hint to TUI apps (Claude Code, htop, vim, etc.) whether we're
+                        // a light or dark terminal. Format: "fg;bg" as ANSI color indices.
+                        // Dark: white-on-black (15;0). Light: black-on-white (0;15).
+                        COLORFGBG: isObsidianDarkMode() ? '15;0' : '0;15',
                     },
                     // stdio[3] is our resize control pipe (write-only from JS side)
                     stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
@@ -446,6 +630,10 @@ class GhosttyTerminalView extends ItemView {
                     this.terminal?.write('\x1b[?25h');
                     this.termEl?.classList.remove('ghostty-cursor-hidden');
                 }
+                // Handle OSC 10/11/12 color queries — ghostty-vt doesn't answer
+                // these, so Claude Code's "Auto" theme can't detect our bg color.
+                // Respond with our current palette so Auto picks the right mode.
+                this.handleColorQueries(data);
                 this.terminal?.write(
                     new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
                     () => {
@@ -454,13 +642,7 @@ class GhosttyTerminalView extends ItemView {
                 );
             });
 
-            // Terminal input → PTY stdin
-            this.terminal?.onData((data: string) => {
-                if (this.ptyAlive && this.ptyProcess?.stdin) {
-                    // onData gives a JS string; write as UTF-8 bytes to the PTY
-                    this.ptyProcess.stdin.write(data, 'utf8');
-                }
-            });
+            // (terminal.onData is wired once in initTerminal — see note there.)
 
             this.ptyProcess.on('close', (code: number | null) => {
                 this.ptyAlive = false;
@@ -597,9 +779,15 @@ class GhosttyTerminalView extends ItemView {
 const GHOSTTY_BUILTIN_KEYBINDS: GhosttyKeybind[] = [
     { mods: new Set(['super']), key: 'c',     action: 'copy_to_clipboard' },
     { mods: new Set(['super']), key: 'v',     action: 'paste_from_clipboard' },
-    // shift+enter / cmd+enter → kitty keyboard protocol newlines (used by Claude etc.)
-    { mods: new Set(['shift']), key: 'enter', action: 'text:\x1b[13;2u' },
-    { mods: new Set(['super']), key: 'enter', action: 'text:\x1b[13;9u' },
+    // shift+enter / cmd+enter → backslash line continuation + CR.
+    // This is what Claude Code's `/terminal-setup` command configures in iTerm/
+    // Terminal.app. Works universally because `\` is plain ASCII — no keyboard
+    // protocol negotiation required. Also recognized by bash/zsh readline as
+    // line continuation in a future line-edit.
+    { mods: new Set(['shift']), key: 'enter', action: 'text:\\\r' },
+    { mods: new Set(['super']), key: 'enter', action: 'text:\\\r' },
+    // shift+tab → reverse tab (cycle completions / Claude Code mode selector)
+    { mods: new Set(['shift']), key: 'tab',   action: 'text:\x1b[Z' },
 ];
 
 /**
@@ -656,6 +844,23 @@ function findKeybind(e: KeyboardEvent, keybinds: GhosttyKeybind[]): GhosttyKeybi
 
     const ghosttyKey = domKeyToGhostty(e.key);
     return keybinds.find(kb => kb.key === ghosttyKey && setsEqual(kb.mods, eventMods));
+}
+
+/**
+ * Escape-hatch shortcuts the terminal must NEVER swallow — these are the
+ * user's way out when focus is trapped in the terminal. Keep this list small.
+ */
+function isObsidianEscapeShortcut(e: KeyboardEvent): boolean {
+    const primary = e.metaKey || e.ctrlKey;
+    if (!primary) return false;
+    const key = e.key.toLowerCase();
+    // Cmd/Ctrl + Shift + P → command palette
+    if (e.shiftKey && !e.altKey && key === 'p') return true;
+    // Cmd/Ctrl + ',' → settings
+    if (!e.shiftKey && !e.altKey && key === ',') return true;
+    // Cmd + Q → quit (macOS); harmless on other platforms where it's unbound
+    if (!e.shiftKey && !e.altKey && key === 'q' && e.metaKey) return true;
+    return false;
 }
 
 /** Unescape Ghostty text: action escape sequences like \e, \n, \r, \t */

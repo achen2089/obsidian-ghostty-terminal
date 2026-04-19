@@ -127,7 +127,10 @@ export class GhosttySettingTab extends PluginSettingTab {
                     .setPlaceholder('15')
                     .setValue(this.plugin.settings.fontSizeOverride > 0 ? String(this.plugin.settings.fontSizeOverride) : '')
                     .onChange(async value => {
-                        this.plugin.settings.fontSizeOverride = parseFloat(value) || 0;
+                        // Sentinel 0 = use default; otherwise require a positive size.
+                        const parsed = parseFloat(value);
+                        this.plugin.settings.fontSizeOverride =
+                            Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
                         await this.plugin.saveSettings();
                     })
             );
@@ -173,7 +176,9 @@ export class GhosttySettingTab extends PluginSettingTab {
                     .setPlaceholder('-1')
                     .setValue(this.plugin.settings.windowPaddingXOverride >= 0 ? String(this.plugin.settings.windowPaddingXOverride) : '')
                     .onChange(async value => {
-                        this.plugin.settings.windowPaddingXOverride = value.trim() === '' ? -1 : (parseInt(value, 10) ?? -1);
+                        const parsed = parseInt(value, 10);
+                        this.plugin.settings.windowPaddingXOverride =
+                            value.trim() === '' || !Number.isFinite(parsed) || parsed < 0 ? -1 : parsed;
                         await this.plugin.saveSettings();
                     })
             );
@@ -186,7 +191,9 @@ export class GhosttySettingTab extends PluginSettingTab {
                     .setPlaceholder('-1')
                     .setValue(this.plugin.settings.windowPaddingYOverride >= 0 ? String(this.plugin.settings.windowPaddingYOverride) : '')
                     .onChange(async value => {
-                        this.plugin.settings.windowPaddingYOverride = value.trim() === '' ? -1 : (parseInt(value, 10) ?? -1);
+                        const parsed = parseInt(value, 10);
+                        this.plugin.settings.windowPaddingYOverride =
+                            value.trim() === '' || !Number.isFinite(parsed) || parsed < 0 ? -1 : parsed;
                         await this.plugin.saveSettings();
                     })
             );
@@ -202,7 +209,9 @@ export class GhosttySettingTab extends PluginSettingTab {
                     .setPlaceholder('10000')
                     .setValue(String(this.plugin.settings.scrollbackLines))
                     .onChange(async value => {
-                        this.plugin.settings.scrollbackLines = parseInt(value, 10) || 10000;
+                        const parsed = parseInt(value, 10);
+                        this.plugin.settings.scrollbackLines =
+                            Number.isFinite(parsed) && parsed >= 0 ? parsed : 10000;
                         await this.plugin.saveSettings();
                     })
             );
